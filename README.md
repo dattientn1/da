@@ -38,10 +38,43 @@ paxg paper --duration 14d
 paxg paper --duration 30m
 ```
 
-Sau khi chạy, mở `results/`:
-- `summary.json` — return, Sharpe, max drawdown, win rate, fees.
-- `trades.csv` — log từng lệnh kèm `llm_decision` + `llm_rationale`.
-- `equity.png` — đường vốn theo thời gian.
+## Theo dõi
+
+Trong khi chạy, sự kiện được ghi **incremental** vào `results/` ngay khi xảy ra (không cần đợi run kết thúc):
+
+| File | Khi nào ghi | Nội dung |
+|---|---|---|
+| `equity.csv` | Mỗi candle đóng | timestamp, equity USDT, price |
+| `trades.csv` | Mỗi lệnh đóng | entry/exit, qty, PnL, fees, reason |
+| `llm_decisions.csv` | Mỗi lần Claude review | decision, confidence, rationale, news_summary |
+| `summary.json` + `equity.png` | Khi run kết thúc (kể cả Ctrl+C) | Tổng kết stats |
+
+Theo dõi sống:
+
+```bash
+# Tail trade events
+tail -f results/trades.csv
+
+# Tail equity (xem vốn theo thời gian)
+tail -f results/equity.csv
+
+# Watch summary qua tmux/log file
+tmux new -s paxg
+paxg paper --duration 14d 2>&1 | tee results/run.log
+# Detach: Ctrl+B D, rejoin: tmux attach -t paxg
+```
+
+### Telegram notifications (optional)
+
+Setup `TELEGRAM_BOT_TOKEN` + `TELEGRAM_CHAT_ID` trong `.env` thì sẽ nhận push cho:
+- 🟢 OPEN trade (entry/stop/tp)
+- ✅/❌ CLOSE trade (PnL + reason)
+- ⚠️ LLM VETO/REDUCE_SIZE (kèm news_summary)
+- 🛑 Lỗi nghiêm trọng
+
+Không set token → app chạy bình thường, chỉ skip notifications.
+
+Cách tạo bot + lấy chat_id xem trong `.env.example`.
 
 ## Tests
 

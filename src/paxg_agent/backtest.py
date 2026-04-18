@@ -8,6 +8,8 @@ import pandas as pd
 from rich.console import Console
 from rich.table import Table
 
+from pathlib import Path
+
 from .agent.reviewer import LLMReviewer, ReviewDecision
 from .config import AppConfig
 from .data.bingx_client import BingXClient
@@ -18,6 +20,7 @@ from .portfolio import Portfolio
 from .reporting import write_reports
 from .strategy.base import SignalAction
 from .strategy.hybrid import HybridStrategy
+from .streaming_writer import StreamingWriter
 
 console = Console()
 
@@ -50,7 +53,11 @@ def fetch_two_weeks(cfg: AppConfig, days: int = 14, use_cache: bool = True) -> p
 
 
 def run_backtest(
-    cfg: AppConfig, days: int = 14, llm_review: bool | None = None, use_cache: bool = True
+    cfg: AppConfig,
+    days: int = 14,
+    llm_review: bool | None = None,
+    use_cache: bool = True,
+    out_dir: str | Path = "results",
 ) -> dict:
     use_llm = cfg.llm.enabled_in_backtest if llm_review is None else llm_review
     reviewer = LLMReviewer(cfg.llm, cfg.anthropic_api_key) if use_llm else None
@@ -58,6 +65,7 @@ def run_backtest(
         console.log("[yellow]LLM review requested but no ANTHROPIC_API_KEY set — disabling.[/]")
         reviewer = None
 
+    writer = StreamingWriter(Path(out_dir))
     df = fetch_two_weeks(cfg, days=days, use_cache=use_cache)
     df = add_indicators(
         df, cfg.strategy.ema_fast, cfg.strategy.ema_slow, cfg.strategy.rsi_period, cfg.strategy.atr_period
@@ -107,6 +115,7 @@ def run_backtest(
                 console.log(
                     f"[cyan]LLM[/] {ts} {decision.decision} ({decision.confidence:.2f}) — {decision.rationale[:100]}"
                 )
+                writer.append_llm(ts, decision, signal.price, qty)
                 qty *= decision.size_multiplier
             if qty > 0:
                 pos = broker.open_long(
@@ -136,17 +145,23 @@ def run_backtest(
                 console.log(
                     f"[red]CLOSE[/] {ts} pnl={trade.pnl:+.2f} USDT ({signal.reason})"
                 )
+                writer.append_trade(trade)
 
         portfolio.record_equity(ts, float(row["close"]))
+        writer.append_equity(ts, portfolio.equity(float(row["close"])), float(row["close"]))
         prev_row = row
 
     # Mark to last close if still in position
     if portfolio.position is not None and len(df):
         last = df.iloc[-1]
-        broker.close(portfolio, df.index[-1], float(last["close"]), "end-of-backtest mark-to-close")
+        trade = broker.close(
+            portfolio, df.index[-1], float(last["close"]), "end-of-backtest mark-to-close"
+        )
+        if trade is not None:
+            writer.append_trade(trade)
         portfolio.record_equity(df.index[-1], float(last["close"]))
 
-    summary = write_reports(portfolio, cfg.portfolio.starting_capital_usdt)
+    summary = write_reports(portfolio, cfg.portfolio.starting_capital_usdt, out_dir=out_dir)
     _print_summary(summary)
     return summary
 
