@@ -1,0 +1,34 @@
+market:
+  symbol: PAXG-USDT
+  timeframe: 1h
+  exchange_base_url: https://open-api.bingx.com
+
+portfolio:
+  starting_capital_usdt: 10000.0
+  risk_per_trade: 0.01
+  max_concurrent_positions: 1
+
+execution:
+  taker_fee: 0.001
+  slippage: 0.0005
+
+strategy:
+  name: hybrid_ema_rsi_atr
+  ema_fast: 20
+  ema_slow: 50
+  rsi_period: 14
+  rsi_oversold: 30
+  rsi_overbought: 70
+  atr_period: 14
+  atr_stop_mult: 2.0
+  atr_take_profit_mult: 3.0
+
+llm:
+  model: claude-sonnet-4-6
+  enabled_in_backtest: false
+  enabled_in_paper: true
+  max_tokens: 1024
+
+paper:
+  poll_interval_seconds: 60
+  duration_default: 14d
